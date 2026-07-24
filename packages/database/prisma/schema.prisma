@@ -1,0 +1,172 @@
+datasource db {
+  provider = "postgresql"
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+enum Role {
+  ADMIN
+  USER
+}
+
+enum TenantRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum Provider {
+  YOUTUBE
+  FACEBOOK
+  INSTAGRAM
+  TIKTOK
+  TELEGRAM
+}
+
+enum PublishStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model Tenant {
+  id                  String               @id @default(uuid())
+  name                String
+  slug                String               @unique
+  niche               String?
+  enabledPlatforms    String[]             @default(["YOUTUBE", "INSTAGRAM", "FACEBOOK", "TIKTOK"])
+  uploadCredits       Int                  @default(10)
+  maxWorkspaces       Int                  @default(1)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  members             TenantMember[]
+  socialAccounts      SocialAccount[]
+  telegramConnections TelegramConnection[]
+  publishJobs         PublishJob[]
+  subscription        Subscription?
+
+  @@map("tenants")
+}
+
+model Subscription {
+  id                   String    @id @default(cuid())
+  tenantId             String    @unique
+  tenant               Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  stripeCustomerId     String?
+  stripeSubscriptionId String?   @unique
+  stripePriceId        String?
+  status               String    @default("active")
+  currentPeriodEnd     DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  @@map("subscriptions")
+}
+
+model User {
+  id             String          @id @default(uuid())
+  clerkId        String?         @unique
+  email          String          @unique
+  name           String?
+  emailVerified  DateTime?
+  image          String?
+  role           Role            @default(USER)
+  tenantMembers  TenantMember[]
+  socialAccounts SocialAccount[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@map("users")
+}
+
+model TenantMember {
+  id        String     @id @default(uuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId  String
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  role      TenantRole @default(MEMBER)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@unique([userId, tenantId])
+  @@index([userId])
+  @@index([tenantId])
+  @@map("tenant_members")
+}
+
+model SocialAccount {
+  id                String        @id @default(uuid())
+  userId            String?
+  user              User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenantId          String
+  tenant            Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider          Provider
+  providerAccountId String
+  accessToken       String // Stores encrypted OAuth access token
+  refreshToken      String? // Stores encrypted OAuth refresh token
+  expiresAt         DateTime?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  publishTasks      PublishTask[]
+
+  @@unique([tenantId, provider, providerAccountId])
+  @@index([tenantId])
+  @@index([userId])
+  @@map("social_accounts")
+}
+
+model TelegramConnection {
+  id              String        @id @default(uuid())
+  botToken        String // Stores encrypted Telegram bot token
+  targetChannelId String
+  isActive        Boolean       @default(true)
+  tenantId        String
+  tenant          Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  publishTasks    PublishTask[]
+
+  @@unique([tenantId, targetChannelId])
+  @@index([tenantId])
+  @@map("telegram_connections")
+}
+
+model PublishJob {
+  id        String        @id @default(uuid())
+  tenantId  String
+  tenant    Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  videoUrl  String
+  caption   String?
+  status    PublishStatus @default(PENDING)
+  tasks     PublishTask[]
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@map("publish_jobs")
+}
+
+model PublishTask {
+  id                   String              @id @default(uuid())
+  jobId                String
+  job                  PublishJob          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  platform             Provider
+  socialAccountId      String?
+  socialAccount        SocialAccount?      @relation(fields: [socialAccountId], references: [id], onDelete: SetNull)
+  telegramConnectionId String?
+  telegramConnection   TelegramConnection? @relation(fields: [telegramConnectionId], references: [id], onDelete: SetNull)
+  status               PublishStatus       @default(PENDING)
+  externalId           String? // To store the uploaded video ID from the platform
+  errorLog             String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([jobId])
+  @@index([status])
+  @@map("publish_tasks")
+}

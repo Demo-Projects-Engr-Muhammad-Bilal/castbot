@@ -1,0 +1,74 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# Dependencies
+node_modules/
+/node_modules
+apps/*/node_modules
+packages/*/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# Production & Build Outputs
+/build
+/dist
+apps/*/dist
+apps/*/build
+.next/
+/.next/
+/out/
+
+# Environment Files (Strictly Protect Secrets)
+.env
+.env*
+.env.local
+.env.*.local
+apps/*/.env
+apps/*/.env*
+apps/*/.env.local
+apps/*/.env.*.local
+packages/*/.env
+packages/*/.env*.local
+
+# Temporary Media & Debug Artifacts (Puppeteer & BullMQ Workers)
+apps/backend/src/scripts/temp-*
+apps/backend/temp-*
+*.mp4
+*.webm
+*.mov
+tiktok-debug-error.png
+*.png
+*.jpeg
+*.jpg
+
+# Logs & Debugging
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+logs/
+*.log
+
+# Testing & Coverage
+/coverage
+
+# System & IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.pem
+
+# Vercel & Deployment
+.vercel
+
+# TypeScript Cache
+*.tsbuildinfo
+next-env.d.ts
+
+
+apps/backend/src/scripts/

@@ -1,0 +1,4 @@
+generated/
+dist/
+.env
+.env.*.local

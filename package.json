@@ -1,0 +1,26 @@
+{
+  "name": "castbot-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev:frontend",
+    "dev:frontend": "npm run dev --workspace=apps/frontend",
+    "dev:backend": "npm run dev --workspace=apps/backend",
+    "build:frontend": "npm run build --workspace=apps/frontend",
+    "build:backend": "npm run build --workspace=apps/backend",
+    "lint": "npm run lint --workspace=apps/frontend",
+    "db:generate": "npm run generate --workspace=packages/database",
+    "db:migrate:dev": "npm run migrate:dev --workspace=packages/database",
+    "db:migrate:deploy": "npm run migrate:deploy --workspace=packages/database",
+    "db:studio": "npm run studio --workspace=packages/database",
+    "postinstall": "npm run db:generate",
+    "dev:all": "concurrently \"npm:dev:backend\" \"npm:dev:frontend\""
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}
