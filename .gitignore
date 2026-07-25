@@ -45,6 +45,13 @@ tiktok-debug-error.png
 *.jpeg
 *.jpg
 
+
+# Allow static image assets in frontend public folder
+!apps/frontend/public/**/*.png
+!apps/frontend/public/**/*.jpeg
+!apps/frontend/public/**/*.jpg
+!apps/frontend/public/**/*.svg
+
 # Logs & Debugging
 npm-debug.log*
 yarn-debug.log*
