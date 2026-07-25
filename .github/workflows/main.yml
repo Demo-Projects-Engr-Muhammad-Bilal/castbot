@@ -22,30 +22,32 @@ jobs:
           node-version: '22.x'
           cache: 'npm'
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Build Database & Backend Workspaces
+      - name: Install dependencies & Generate Prisma
         run: |
+          npm ci
           npm run generate --workspace=packages/database
+
+      - name: Build Workspaces
+        run: |
           npm run build --workspace=packages/database
           npm run build:backend
 
       - name: Bundle Production Package
         run: |
-          mkdir -p deploy
-          cp -r apps/backend/dist ./deploy/dist
+          mkdir -p deploy/dist
+          cp -r apps/backend/dist/* ./deploy/dist/
           cp apps/backend/package.json ./deploy/
-          cp -r packages ./deploy/packages
-          cp package.json ./deploy/
-          cp package-lock.json ./deploy/
           
-          # Install dependencies without triggering postinstall hooks
+          # Production dependencies install inside deploy folder
           cd deploy
-          npm ci --omit=dev --legacy-peer-deps --ignore-scripts
+          npm install --omit=dev --legacy-peer-deps @prisma/client
           
-          # Re-generate Prisma Client directly for production output
-          npx prisma generate --schema=packages/database/prisma/schema.prisma
+          # Copy generated Prisma Client & Database dist from root node_modules
+          mkdir -p node_modules/@prisma node_modules/@repo
+          cp -r ../node_modules/.prisma ./node_modules/ 2>/dev/null || true
+          cp -r ../node_modules/@prisma/client ./node_modules/@prisma/ 2>/dev/null || true
+          cp -r ../packages/database/dist ./node_modules/@repo/database 2>/dev/null || true
+          
           zip -r ../release.zip .
 
       - name: Deploy to Azure Web App
