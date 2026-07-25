@@ -22,6 +22,7 @@ import {
   Sparkles,
   UploadCloud,
   X,
+  Send,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -96,6 +97,7 @@ export function VideoPublisherForm() {
     { id: "YOUTUBE", label: "YouTube Shorts", icon: YoutubeIcon, color: "text-red-500" },
     { id: "META", label: "Meta Reels", icon: InstagramIcon, color: "text-pink-500" },
     { id: "TIKTOK", label: "TikTok Video", icon: TiktokIcon, color: "text-cyan-400" },
+    { id: "TELEGRAM", label: "Telegram Channel", icon: Send, color: "text-blue-500" },
   ];
 
   const availablePlatforms = platformDefinitions.filter((p) => {
@@ -399,11 +401,10 @@ export function VideoPublisherForm() {
                         key={p.id}
                         type="button"
                         onClick={() => togglePlatform(p.id)}
-                        className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all cursor-pointer ${
-                          isSelected
+                        className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all cursor-pointer ${isSelected
                             ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/30"
                             : "border-border/80 bg-background text-muted-foreground hover:bg-muted/40"
-                        }`}
+                          }`}
                       >
                         <Icon className={`w-5 h-5 shrink-0 ${p.color}`} />
                         <span className="truncate">{p.label}</span>
@@ -429,11 +430,10 @@ export function VideoPublisherForm() {
             <button
               type="button"
               onClick={() => setValue("publishMode", "IMMEDIATE")}
-              className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all cursor-pointer ${
-                publishMode === "IMMEDIATE"
+              className={`p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all cursor-pointer ${publishMode === "IMMEDIATE"
                   ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/30"
                   : "border-border bg-background text-muted-foreground"
-              }`}
+                }`}
             >
               <Sparkles className="w-5 h-5 text-primary shrink-0" />
               <div className="text-left">
@@ -465,11 +465,10 @@ export function VideoPublisherForm() {
                 type="button"
                 onClick={() => planConfig.allowScheduling && setValue("publishMode", "SCHEDULED")}
                 disabled={!planConfig.allowScheduling}
-                className={`w-full p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all cursor-pointer ${
-                  publishMode === "SCHEDULED"
+                className={`w-full p-4 rounded-2xl border text-xs font-bold flex items-center gap-3 transition-all cursor-pointer ${publishMode === "SCHEDULED"
                     ? "border-primary bg-primary/10 text-foreground ring-1 ring-primary/30"
                     : "border-border bg-background text-muted-foreground"
-                }`}
+                  }`}
               >
                 <Clock className="w-5 h-5 text-blue-500 shrink-0" />
                 <div className="text-left">

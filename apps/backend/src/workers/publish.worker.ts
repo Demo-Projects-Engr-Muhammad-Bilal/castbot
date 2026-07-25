@@ -17,6 +17,7 @@ import {
 import { YouTubeService as YouTubeShortsService } from "../publishers/youtube.publisher";
 import { FacebookService as FacebookReelsService } from "../publishers/facebook.publisher";
 import { InstagramService as InstagramReelsService } from "../publishers/instagram.publisher";
+import { sendVideoToTelegramChannel } from "../services/telegram.service";
 import { TikTokService } from "../publishers/tiktok.publisher";
 import { PublishStatus, Provider } from "@repo/database";
 import fs from "fs";
@@ -156,9 +157,9 @@ async function fetchDecryptedAccounts(jobId: string, tenantId?: string, tenantSl
 }
 
 function buildCaptionResolver(captionData: PublishJobData["captionData"], caption?: string) {
-  return (platformKey: "youtube" | "facebook" | "instagram" | "tiktok"): string => {
-    if (captionData?.isCustom && captionData[platformKey] && captionData[platformKey]!.trim()) {
-      return captionData[platformKey]!;
+  return (platformKey: "youtube" | "facebook" | "instagram" | "tiktok" | "telegram"): string => {
+    if (captionData?.isCustom && (captionData as any)[platformKey] && (captionData as any)[platformKey]!.trim()) {
+      return (captionData as any)[platformKey]!;
     }
     return captionData?.global || caption || "CastBot Automated Video Publish";
   };
@@ -171,10 +172,11 @@ const safeUpsertTask = async (
   status: PublishStatus,
   externalId?: string,
   errorLog?: string,
-  socialAccountId?: string
+  socialAccountId?: string,
+  telegramConnectionId?: string
 ) => {
   try {
-    await upsertPublishTask(ledgerJobId, platform, status, externalId, errorLog, socialAccountId);
+    await upsertPublishTask(ledgerJobId, platform, status, externalId, errorLog, socialAccountId, telegramConnectionId);
   } catch (err) {
     log("warn", jobId, `⚠️ Could not log platform task status [${platform}]:`, err);
   }
@@ -372,6 +374,29 @@ export async function processLightPublishJob(job: Job<PublishJobData>): Promise<
         const errMsg = "Facebook credentials missing";
         await safeUpsertTask(jobId, jobId, Provider.FACEBOOK, PublishStatus.FAILED, undefined, errMsg, fbAccount.id);
         results.push({ provider: "FACEBOOK", status: "FAILED", error: errMsg });
+      }
+    }
+
+    if (requestedPlatforms.includes("TELEGRAM")) {
+      const captionText = getCaptionForPlatform("telegram");
+      await safeUpsertTask(jobId, jobId, Provider.TELEGRAM, PublishStatus.PROCESSING);
+
+      try {
+        log("log", jobId, "📨 Dispatching Telegram publisher...");
+        const tgResult = await sendVideoToTelegramChannel({
+          tenantId: tenantId!,
+          videoPath,
+          caption: captionText,
+        });
+        await safeUpsertTask(
+          jobId, jobId, Provider.TELEGRAM, PublishStatus.COMPLETED,
+          tgResult.telegramMessageId, undefined, undefined, tgResult.telegramConnectionId
+        );
+        results.push({ provider: "TELEGRAM", status: "SUCCESS", id: tgResult.telegramMessageId });
+      } catch (err: unknown) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await safeUpsertTask(jobId, jobId, Provider.TELEGRAM, PublishStatus.FAILED, undefined, errMsg);
+        results.push({ provider: "TELEGRAM", status: "FAILED", error: errMsg });
       }
     }
 

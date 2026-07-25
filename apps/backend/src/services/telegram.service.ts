@@ -1,15 +1,16 @@
+import { Provider } from "@repo/database";
+import axios from "axios";
+import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import crypto from "crypto";
-import axios from "axios";
 import { Readable } from "stream";
 import { finished } from "stream/promises";
-import { prisma, ensurePrismaConnected, withPrismaRetry } from "../lib/prisma";
-import { createPendingPublishJob } from "../lib/db-ledger";
-import { publishQueue, tiktokPublishQueue, PublishJobData } from "../queues/publish.queue";
-import { encryptToken, decryptToken } from "../utils/crypto.util";
-import { Provider } from "@repo/database";
 import { ValidationError } from "../errors/app-error";
+import { createPendingPublishJob } from "../lib/db-ledger";
+import { ensurePrismaConnected, prisma, withPrismaRetry } from "../lib/prisma";
+import { PublishJobData, publishQueue, tiktokPublishQueue } from "../queues/publish.queue";
+import { decryptToken, encryptToken } from "../utils/crypto.util";
+import FormData from "form-data";
 
 const SCRIPTS_DIR = path.join(__dirname, "..", "scripts");
 
@@ -27,6 +28,17 @@ export interface RegisterBotResult {
   targetChannelId: string;
   webhookSet: boolean;
   webhookUrl: string;
+}
+
+export interface SendTelegramVideoInput {
+  tenantId: string;
+  videoPath: string;
+  caption?: string;
+}
+
+export interface SendTelegramVideoResult {
+  telegramMessageId: string;
+  telegramConnectionId: string;
 }
 
 /** Validates a bot token against Telegram, persists the encrypted connection, and configures the webhook. */
@@ -258,5 +270,52 @@ export async function ingestTelegramWebhookUpdate(update: unknown, tenantIdParam
     tenantId,
     caption,
     chatId: chatIdStr,
+  };
+}
+
+
+/** Publishes a local video file to a tenant's registered Telegram channel via Bot API sendVideo. */
+export async function sendVideoToTelegramChannel(
+  input: SendTelegramVideoInput
+): Promise<SendTelegramVideoResult> {
+  const { tenantId, videoPath, caption } = input;
+
+  const connection = await withPrismaRetry(() =>
+    prisma.telegramConnection.findFirst({ where: { tenantId, isActive: true } })
+  );
+
+  if (!connection) {
+    throw new ValidationError("No active Telegram connection found for this workspace.");
+  }
+
+  const botToken = decryptToken(connection.botToken);
+  if (!botToken) {
+    throw new ValidationError("Stored Telegram bot token could not be decrypted.");
+  }
+
+  if (!fs.existsSync(videoPath)) {
+    throw new ValidationError(`Video file not found at: ${videoPath}`);
+  }
+
+  const form = new FormData();
+  form.append("chat_id", connection.targetChannelId);
+  form.append("caption", (caption || "").slice(0, 1024));
+  form.append("video", fs.createReadStream(videoPath));
+
+  const sendVideoUrl = `https://api.telegram.org/bot${botToken}/sendVideo`;
+
+  const res = await axios.post(sendVideoUrl, form, {
+    headers: form.getHeaders(),
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
+  });
+
+  if (!res.data?.ok) {
+    throw new Error(`Telegram sendVideo API rejected the upload: ${JSON.stringify(res.data)}`);
+  }
+
+  return {
+    telegramMessageId: String(res.data.result.message_id),
+    telegramConnectionId: connection.id,
   };
 }

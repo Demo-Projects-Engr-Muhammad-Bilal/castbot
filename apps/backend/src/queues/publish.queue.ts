@@ -16,6 +16,7 @@ export interface PublishJobData {
     facebook?: string;
     instagram?: string;
     tiktok?: string;
+    telegram?: string;
     isCustom?: boolean;
   };
   caption?: string;

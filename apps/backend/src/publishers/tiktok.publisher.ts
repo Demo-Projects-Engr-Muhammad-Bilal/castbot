@@ -1,6 +1,6 @@
+import fs from "fs";
 import puppeteer from "puppeteer-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
-import fs from "fs";
 import { BasePublisher } from "./base-publisher";
 
 puppeteer.use(StealthPlugin());
@@ -14,7 +14,21 @@ interface TikTokCookie {
   httpOnly?: boolean;
 }
 
-function getEdgePath(): string {
+function getBrowserExecutablePath(): string | undefined {
+  if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+    return process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  if (process.env.NODE_ENV === "production") {
+    try {
+      const chromiumPath = (puppeteer as any).executablePath?.();
+      if (chromiumPath && fs.existsSync(chromiumPath)) return chromiumPath;
+    } catch {
+      // ignore — undefined lets puppeteer.launch() resolve its own default
+    }
+    return undefined;
+  }
+
   const edgePaths = [
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -27,13 +41,14 @@ function getEdgePath(): string {
   }
 
   try {
-    const fallback = (puppeteer as any).executablePath ? (puppeteer as any).executablePath() : undefined;
+    const fallback = (puppeteer as any).executablePath?.();
     if (fallback && fs.existsSync(fallback)) return fallback;
   } catch {
     // ignore
   }
 
-  throw new Error("Microsoft Edge executable not found at standard installation paths.");
+  console.warn("⚠️ [TikTok Publisher] No local Edge/Chromium found — letting Puppeteer resolve its default.");
+  return undefined;
 }
 
 export function parseTikTokCookies(cookiesInput: string): TikTokCookie[] {
@@ -113,15 +128,18 @@ export class TikTokService extends BasePublisher {
       throw new Error("❌ Invalid or empty TikTok session cookies. Please re-enter TikTok cookies in Social Accounts.");
     }
 
-    const edgePath = getEdgePath();
+    const executablePath = getBrowserExecutablePath();
     const envVal = (process.env.TIKTOK_HEADLESS || "T").trim().toUpperCase();
     const isHeadless = envVal === "T" || envVal === "TRUE";
 
-    console.log(`      🌐 [TikTok Service] Launching Stealth Browser (Headless: ${isHeadless}) with Edge:`, edgePath);
+    console.log(
+      `      🌐 [TikTok Service] Launching Stealth Browser (Headless: ${isHeadless})` +
+      (executablePath ? ` with binary: ${executablePath}` : " with Puppeteer's bundled Chromium")
+    );
 
     const browser = await puppeteer.launch({
       headless: isHeadless,
-      executablePath: edgePath,
+      ...(executablePath ? { executablePath } : {}),
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
