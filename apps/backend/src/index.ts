@@ -18,7 +18,7 @@ import metricsRoutes from "./routes/metrics.routes";
 
 const app = express();
 
-// Trust reverse proxies (ngrok, Cloudflare, load balancers) for accurate rate limiting
+// Trust Azure App Service reverse proxy for accurate client IP identification
 app.set("trust proxy", 1);
 
 const PORT = process.env.PORT || 5000;
@@ -39,6 +39,8 @@ app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
 
 // Global JSON body parser (MUST be mounted before routes that consume JSON req.body)
 app.use(express.json());
+
+// API Rate Limiter
 app.use("/api/", apiRateLimiter);
 
 // Health Check Endpoint
