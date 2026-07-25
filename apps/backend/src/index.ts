@@ -15,6 +15,7 @@ import telegramRoutes from "./routes/telegram.routes";
 import workspaceRoutes from "./routes/workspace.routes";
 import stripeRoutes from "./routes/stripe.routes";
 import metricsRoutes from "./routes/metrics.routes";
+import clerkRoutes from "./routes/clerk.routes";
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use(corsMiddleware);
 
 // Raw middleware specifically for Stripe Webhooks BEFORE express.json()
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
+app.use("/api/clerk/webhook", express.raw({ type: "application/json" }));
 
 // Global JSON body parser (MUST be mounted before routes that consume JSON req.body)
 app.use(express.json());
@@ -71,6 +73,7 @@ app.use("/api/scheduled", authMiddleware, scheduledRoutes);
 app.use("/api/telegram", telegramRoutes);
 app.use("/api/workspaces", authMiddleware, workspaceRoutes);
 app.use("/api/metrics", metricsRoutes);
+app.use("/api/clerk", clerkRoutes);
 
 // Centralized Error Handling Middleware — MUST be the last app.use() call.
 app.use(errorHandlerMiddleware);

@@ -8,8 +8,8 @@
     "start": "node dist/index.js"
   },
   "dependencies": {
-    "@repo/database": "*",
     "@clerk/backend": "^3.11.7",
+    "@repo/database": "*",
     "@types/multer": "^2.2.0",
     "axios": "^1.18.1",
     "bullmq": "^5.80.10",
@@ -27,7 +27,8 @@
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2",
     "puppeteer-real-browser": "^1.4.4",
-    "stripe": "^22.3.2"
+    "stripe": "^22.3.2",
+    "svix": "^1.99.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
