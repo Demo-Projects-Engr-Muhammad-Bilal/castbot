@@ -64,4 +64,4 @@ jobs:
         with:
           app-name: 'castbot-backend-api'
           slot-name: 'Production'
-          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_48332E3A03B04A0BBBD4BD68A48BA0C0 }}
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
