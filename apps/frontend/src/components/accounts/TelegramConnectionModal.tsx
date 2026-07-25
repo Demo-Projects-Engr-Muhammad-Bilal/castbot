@@ -25,9 +25,10 @@ interface TelegramConnectionModalProps {
   onSuccess?: () => void;
 }
 
+// Updated schema: renamed chatId -> targetChannelId
 const telegramConnectionSchema = z.object({
   botToken: z.string().trim().min(1, "Bot Token is required."),
-  chatId: z.string().trim().min(1, "Channel / Group Chat ID is required."),
+  targetChannelId: z.string().trim().min(1, "Channel / Group Chat ID is required."),
 });
 
 type TelegramConnectionValues = z.infer<typeof telegramConnectionSchema>;
@@ -52,7 +53,7 @@ export function TelegramConnectionModal({
     formState: { errors },
   } = useForm<TelegramConnectionValues>({
     resolver: zodResolver(telegramConnectionSchema),
-    defaultValues: { botToken: "", chatId: "" },
+    defaultValues: { botToken: "", targetChannelId: "" },
   });
 
   const handleClose = () => {
@@ -77,7 +78,7 @@ export function TelegramConnectionModal({
           method: "POST",
           body: JSON.stringify({
             botToken: values.botToken,
-            chatId: values.chatId,
+            targetChannelId: values.targetChannelId, // Corrected payload key
           }),
         },
         token
@@ -175,10 +176,10 @@ export function TelegramConnectionModal({
               mono
               placeholder="e.g. @MyChannel or -1001234567890"
               disabled={isSubmitting}
-              {...register("chatId")}
+              {...register("targetChannelId")}
             />
-            {errors.chatId && (
-              <p className="text-[11px] text-destructive mt-1">{errors.chatId.message}</p>
+            {errors.targetChannelId && (
+              <p className="text-[11px] text-destructive mt-1">{errors.targetChannelId.message}</p>
             )}
             <p className="text-[11px] text-muted-foreground mt-1">
               Ensure your bot is added as an Administrator with &quot;Post Messages&quot; permission.
