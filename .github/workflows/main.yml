@@ -25,14 +25,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Backend Workspace
-        run: npm run build:backend
-
-      - name: Bundle Production Package
+      - name: Build Database & Backend Workspaces
         run: |
-          mkdir -p deploy
+          npm run generate --workspace=packages/database
+          npm run build:backend
+
+      - name: Bundle Production Package (Monorepo Workspaces Included)
+        run: |
+          mkdir -p deploy/packages
           cp -r apps/backend/dist ./deploy/dist
           cp apps/backend/package.json ./deploy/
+          cp -r packages/database ./deploy/packages/
           cp -r node_modules ./deploy/node_modules
           cd deploy && zip -r ../release.zip .
 
