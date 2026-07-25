@@ -45,12 +45,14 @@ tiktok-debug-error.png
 *.jpeg
 *.jpg
 
-
-# Allow static image assets in frontend public folder
+# Allow static image assets in frontend public folder and docs diagrams
 !apps/frontend/public/**/*.png
 !apps/frontend/public/**/*.jpeg
 !apps/frontend/public/**/*.jpg
 !apps/frontend/public/**/*.svg
+!docs/diagrams/*.png
+!docs/diagrams/*.jpeg
+!docs/diagrams/*.jpg
 
 # Logs & Debugging
 npm-debug.log*
