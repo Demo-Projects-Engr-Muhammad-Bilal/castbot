@@ -27,7 +27,7 @@ jobs:
           npm ci
           npm run generate --workspace=packages/database
 
-      - name: Build Workspaces
+      - name: Build Database & Backend Workspaces
         run: |
           npm run build --workspace=packages/database
           npm run build:backend
@@ -35,20 +35,18 @@ jobs:
       - name: Bundle Production Package
         run: |
           mkdir -p deploy/dist
+          
+          # Copy compiled backend code and package config
           cp -r apps/backend/dist/* ./deploy/dist/
           cp apps/backend/package.json ./deploy/
           
-          # Production dependencies install inside deploy folder
-          cd deploy
-          npm install --omit=dev --legacy-peer-deps @prisma/client
+          # Copy node_modules and compiled local database package directly
+          cp -r node_modules ./deploy/node_modules
+          mkdir -p ./deploy/node_modules/@repo/database
+          cp -r packages/database/dist ./deploy/node_modules/@repo/database/
+          cp packages/database/package.json ./deploy/node_modules/@repo/database/
           
-          # Copy generated Prisma Client & Database dist from root node_modules
-          mkdir -p node_modules/@prisma node_modules/@repo
-          cp -r ../node_modules/.prisma ./node_modules/ 2>/dev/null || true
-          cp -r ../node_modules/@prisma/client ./node_modules/@prisma/ 2>/dev/null || true
-          cp -r ../packages/database/dist ./node_modules/@repo/database 2>/dev/null || true
-          
-          zip -r ../release.zip .
+          cd deploy && zip -r ../release.zip .
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
