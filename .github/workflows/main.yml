@@ -1,57 +1,149 @@
-name: Build and deploy Node.js app to Azure Web App - castbot-backend-api
+name: Deploy Backend to Azure App Service
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
   workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: castbot-backend-api
+  NODE_VERSION: '22.x'
+  # Dummy value so `prisma generate` never fails due to a missing DATABASE_URL
+  # at build time (no real DB connection is made during generate).
+  DATABASE_URL: 'postgresql://user:pass@localhost:5432/placeholder'
 
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
 
-    env:
-      DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
-
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js version
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
         uses: actions/setup-node@v4
         with:
-          node-version: '22.x'
+          node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
-      - name: Install dependencies & Generate Prisma
+      # -----------------------------------------------------------------
+      # 1. Install ALL workspace deps from the monorepo root.
+      #    Root package.json has "postinstall": "npm run db:generate",
+      #    so this already triggers `prisma generate`. We still call it
+      #    explicitly below so the workflow doesn't silently depend on
+      #    that hook existing.
+      # -----------------------------------------------------------------
+      - name: Install monorepo dependencies (root)
+        run: npm ci
+
+      - name: Generate Prisma Client (packages/database)
+        run: npm run db:generate
+
+      # -----------------------------------------------------------------
+      # 2. Build the shared @repo/database package to JS first.
+      # -----------------------------------------------------------------
+      - name: Build @repo/database workspace
+        run: npm run build --workspace=packages/database
+
+      - name: Normalize @repo/database build output
+        # Defensive fix for ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING:
+        # packages/database/tsconfig.json has no explicit "rootDir", so tsc
+        # may emit to dist/src/index.js instead of dist/index.js (which is
+        # what package.json's "main" field expects). This step normalizes
+        # either layout to a flat dist/ so downstream steps never guess.
         run: |
-          npm ci
-          npm run generate --workspace=packages/database
+          set -e
+          cd packages/database
+          if [ -d "dist/src" ] && [ ! -f "dist/index.js" ]; then
+            echo "Flattening dist/src/* -> dist/"
+            cp -r dist/src/. dist/
+            rm -rf dist/src
+          fi
+          if [ ! -f "dist/index.js" ]; then
+            echo "::error::@repo/database build did not produce dist/index.js"
+            exit 1
+          fi
 
-      - name: Build Database & Backend Workspaces
+      # -----------------------------------------------------------------
+      # 3. Build the backend app to JS.
+      # -----------------------------------------------------------------
+      - name: Build apps/backend workspace
+        run: npm run build --workspace=apps/backend
+
+      - name: Verify backend build output
         run: |
-          npm run build --workspace=packages/database
-          npm run build:backend
+          set -e
+          if [ ! -f "apps/backend/dist/index.js" ]; then
+            echo "::error::apps/backend build did not produce dist/index.js"
+            exit 1
+          fi
 
-      - name: Bundle Production Package
+      # -----------------------------------------------------------------
+      # 4. Strip dev-only deps (tsc, tsx, prisma CLI, @types/*, etc.) now
+      #    that all compilation is done, so the shipped node_modules is
+      #    production-only.
+      # -----------------------------------------------------------------
+      - name: Prune devDependencies
+        run: npm prune --omit=dev
+
+      # -----------------------------------------------------------------
+      # 5. Assemble a clean, self-contained deployment folder that mirrors
+      #    exactly what Azure's wwwroot needs, since the startup command
+      #    "node dist/index.js" runs from the zip's root.
+      # -----------------------------------------------------------------
+      - name: Assemble release package
         run: |
-          mkdir -p deploy/dist
-          
-          # Copy compiled backend code and package config
-          cp -r apps/backend/dist/* ./deploy/dist/
-          cp apps/backend/package.json ./deploy/
-          
-          # Copy node_modules and sync compiled local database package directly
-          cp -r node_modules ./deploy/node_modules
-          mkdir -p ./deploy/node_modules/@repo/database/dist
-          cp -r packages/database/dist/* ./deploy/node_modules/@repo/database/dist/ 2>/dev/null || true
-          cp packages/database/package.json ./deploy/node_modules/@repo/database/
-          
-          cd deploy && zip -r ../release.zip .
+          set -e
+          rm -rf release
+          mkdir -p release
 
+          # Backend compiled output -> release/dist (matches "node dist/index.js")
+          cp -r apps/backend/dist release/dist
+
+          # Backend package.json (module type / metadata only; not used to npm install)
+          cp apps/backend/package.json release/package.json
+
+          # Full production node_modules (pruned above), including @prisma/client,
+          # .prisma engine files, and all of the backend's runtime dependencies.
+          mkdir -p release/node_modules
+          cp -rL node_modules/. release/node_modules/
+
+          # Replace the workspace symlink for @repo/database with a real,
+          # self-contained copy — this is what prevents both the
+          # "404 Not Found - @repo/database" error and any broken-symlink
+          # issue from `cp` following/copying it incorrectly.
+          rm -rf release/node_modules/@repo/database
+          mkdir -p release/node_modules/@repo/database
+          cp -r packages/database/dist release/node_modules/@repo/database/dist
+          cp -r packages/database/generated release/node_modules/@repo/database/generated
+          cp packages/database/package.json release/node_modules/@repo/database/package.json
+
+          echo "Final release/ structure:"
+          ls -la release
+          echo "@repo/database contents:"
+          ls -la release/node_modules/@repo/database
+
+      - name: Sanity-check assembled package
+        run: |
+          set -e
+          test -f release/dist/index.js || (echo "::error::release/dist/index.js missing" && exit 1)
+          test -f release/node_modules/@repo/database/dist/index.js || (echo "::error::@repo/database dist/index.js missing in release" && exit 1)
+          test -d release/node_modules/@repo/database/generated/client || (echo "::error::Prisma generated client missing in release" && exit 1)
+          test -d release/node_modules/@prisma/client || (echo "::error::@prisma/client missing in release" && exit 1)
+          echo "All required artifacts present."
+
+      - name: Create release.zip
+        working-directory: release
+        run: zip -r ../release.zip . -x "*.map"
+
+      # -----------------------------------------------------------------
+      # 6. Deploy the zip directly — no `npm install` runs on Azure's side,
+      #    avoiding the isolated-folder 404 error entirely.
+      # -----------------------------------------------------------------
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
-          app-name: 'castbot-backend-api'
-          slot-name: 'Production'
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           package: release.zip
