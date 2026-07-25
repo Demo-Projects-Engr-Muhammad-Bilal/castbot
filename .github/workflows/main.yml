@@ -40,9 +40,12 @@ jobs:
           cp package.json ./deploy/
           cp package-lock.json ./deploy/
           
-          # Install workspace dependencies inside deploy folder
+          # Install dependencies without triggering postinstall hooks
           cd deploy
-          npm ci --omit=dev --legacy-peer-deps
+          npm ci --omit=dev --legacy-peer-deps --ignore-scripts
+          
+          # Re-generate Prisma Client directly for production output
+          npx prisma generate --schema=packages/database/prisma/schema.prisma
           zip -r ../release.zip .
 
       - name: Deploy to Azure Web App
