@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     env:
@@ -25,47 +25,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Database & Backend Workspaces
+      - name: Build Database Workspace (TypeScript Compile)
         run: |
           npm run generate --workspace=packages/database
-          npm run build --workspace=packages/database || true
-          npm run build:backend
+          npm run build --workspace=packages/database
+
+      - name: Build Backend App
+        run: npm run build:backend
 
       - name: Bundle Production Package
         run: |
-          mkdir -p deploy/packages
-          cp -r apps/backend/dist ./deploy/dist
+          mkdir -p deploy/dist
+          cp -r apps/backend/dist/* ./deploy/dist/
           cp apps/backend/package.json ./deploy/
-          cp -r packages/database ./deploy/packages/
-          cp -r node_modules ./deploy/node_modules
-          cd deploy && zip -r ../release.zip .
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: node-app
-          path: release.zip
-
-  deploy:
-    runs-on: ubuntu-latest
-    needs: build
-    environment:
-      name: 'Production'
-      url: ${{ steps.deploy-to-webapp.outputs.webapp-url }}
-    
-    steps:
-      - name: Download artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: node-app
-
-      - name: Unzip deployment package
-        run: unzip release.zip -d . && rm release.zip
+          
+          # Install production dependencies inside deploy folder
+          cd deploy
+          npm install --omit=dev --legacy-peer-deps
+          zip -r ../release.zip .
 
       - name: Deploy to Azure Web App
-        id: deploy-to-webapp
         uses: azure/webapps-deploy@v2
         with:
           app-name: 'castbot-backend-api'
           slot-name: 'Production'
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
+          package: release.zip
