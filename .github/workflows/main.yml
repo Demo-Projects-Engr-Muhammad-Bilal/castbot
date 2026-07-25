@@ -28,9 +28,10 @@ jobs:
       - name: Build Database & Backend Workspaces
         run: |
           npm run generate --workspace=packages/database
+          npm run build --workspace=packages/database || true
           npm run build:backend
 
-      - name: Bundle Production Package (Monorepo Workspaces Included)
+      - name: Bundle Production Package
         run: |
           mkdir -p deploy/packages
           cp -r apps/backend/dist ./deploy/dist
