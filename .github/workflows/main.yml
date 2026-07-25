@@ -25,23 +25,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build Database Workspace (TypeScript Compile)
+      - name: Build Database & Backend Workspaces
         run: |
           npm run generate --workspace=packages/database
           npm run build --workspace=packages/database
-
-      - name: Build Backend App
-        run: npm run build:backend
+          npm run build:backend
 
       - name: Bundle Production Package
         run: |
-          mkdir -p deploy/dist
-          cp -r apps/backend/dist/* ./deploy/dist/
+          mkdir -p deploy
+          cp -r apps/backend/dist ./deploy/dist
           cp apps/backend/package.json ./deploy/
+          cp -r packages ./deploy/packages
+          cp package.json ./deploy/
+          cp package-lock.json ./deploy/
           
-          # Install production dependencies inside deploy folder
+          # Install workspace dependencies inside deploy folder
           cd deploy
-          npm install --omit=dev --legacy-peer-deps
+          npm ci --omit=dev --legacy-peer-deps
           zip -r ../release.zip .
 
       - name: Deploy to Azure Web App
