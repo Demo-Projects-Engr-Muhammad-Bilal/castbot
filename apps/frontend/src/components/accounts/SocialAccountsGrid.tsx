@@ -32,7 +32,7 @@ export interface AccountStatusItem {
   status: "ACTIVE" | "EXPIRED" | "NOT_CONNECTED";
 }
 
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5000";
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
 export function SocialAccountsGrid() {
   const { activeWorkspace } = useWorkspace();
@@ -62,7 +62,7 @@ export function SocialAccountsGrid() {
     try {
       const token = await getToken();
       if (!token) return;
-      window.location.href = `${BACKEND_URL}/api/auth/youtube?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(activeWorkspace.id)}`;
+      window.location.href = `${BACKEND_URL}/auth/youtube?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(activeWorkspace.id)}`;
     } catch (err) {
       console.error("Failed to initiate YouTube OAuth:", err);
       setConnectingProvider(null);
@@ -75,7 +75,7 @@ export function SocialAccountsGrid() {
     try {
       const token = await getToken();
       if (!token) return;
-      window.location.href = `${BACKEND_URL}/api/auth/facebook?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(activeWorkspace.id)}`;
+      window.location.href = `${BACKEND_URL}/auth/facebook?token=${encodeURIComponent(token)}&tenantId=${encodeURIComponent(activeWorkspace.id)}`;
     } catch (err) {
       console.error("Failed to initiate Meta OAuth:", err);
       setConnectingProvider(null);
