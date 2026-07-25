@@ -40,10 +40,10 @@ jobs:
           cp -r apps/backend/dist/* ./deploy/dist/
           cp apps/backend/package.json ./deploy/
           
-          # Copy node_modules and compiled local database package directly
+          # Copy node_modules and sync compiled local database package directly
           cp -r node_modules ./deploy/node_modules
-          mkdir -p ./deploy/node_modules/@repo/database
-          cp -r packages/database/dist ./deploy/node_modules/@repo/database/
+          mkdir -p ./deploy/node_modules/@repo/database/dist
+          cp -r packages/database/dist/* ./deploy/node_modules/@repo/database/dist/ 2>/dev/null || true
           cp packages/database/package.json ./deploy/node_modules/@repo/database/
           
           cd deploy && zip -r ../release.zip .
