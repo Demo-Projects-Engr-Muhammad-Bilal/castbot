@@ -32,6 +32,13 @@ export async function listAccountStatuses(tenantId: string): Promise<AccountStat
     updatedAt: Date;
   }> = [];
 
+  let existingTelegramConnections: Array<{
+    id: string;
+    targetChannelId: string;
+    isActive: boolean;
+    updatedAt: Date;
+  }> = [];
+
   try {
     existingAccounts = await withPrismaRetry(() =>
       prisma.socialAccount.findMany({
@@ -43,7 +50,20 @@ export async function listAccountStatuses(tenantId: string): Promise<AccountStat
     console.error("⚠️ [accounts.service] DB Query failed, returning fallback accounts status:", errorStack);
   }
 
-  return ALL_PROVIDERS.map((provider) => {
+  // Telegram connections live in a separate table (telegram_connections),
+  // not social_accounts — must be queried independently.
+  try {
+    existingTelegramConnections = await withPrismaRetry(() =>
+      prisma.telegramConnection.findMany({
+        where: { tenantId },
+      })
+    );
+  } catch (dbErr: unknown) {
+    const errorStack = dbErr instanceof Error ? dbErr.stack || dbErr.message : String(dbErr);
+    console.error("⚠️ [accounts.service] Telegram connection query failed:", errorStack);
+  }
+
+  const oauthStatuses: AccountStatus[] = ALL_PROVIDERS.map((provider) => {
     const found = existingAccounts.find((acc) => acc.provider === provider);
     if (found) {
       const isExpired = found.expiresAt ? new Date(found.expiresAt) < new Date() : false;
@@ -69,6 +89,34 @@ export async function listAccountStatuses(tenantId: string): Promise<AccountStat
       hasRefreshToken: false,
     };
   });
+
+  // Prefer the active connection if multiple rows exist for this tenant.
+  const activeTelegramConn =
+    existingTelegramConnections.find((c) => c.isActive) || existingTelegramConnections[0];
+
+  const telegramStatus: AccountStatus = activeTelegramConn
+    ? {
+        id: activeTelegramConn.id,
+        provider: "TELEGRAM" as Provider,
+        connected: true,
+        providerAccountId: activeTelegramConn.targetChannelId,
+        updatedAt: activeTelegramConn.updatedAt.toISOString(),
+        status: "ACTIVE",
+        hasAccessToken: true,
+        hasRefreshToken: false,
+      }
+    : {
+        id: null,
+        provider: "TELEGRAM" as Provider,
+        connected: false,
+        providerAccountId: "Not Connected",
+        updatedAt: null,
+        status: "NOT_CONNECTED",
+        hasAccessToken: false,
+        hasRefreshToken: false,
+      };
+
+  return [...oauthStatuses, telegramStatus];
 }
 
 export interface UpdateAccountInput {
