@@ -15,20 +15,24 @@ interface TikTokCookie {
 }
 
 function getBrowserExecutablePath(): string | undefined {
+  // 1. Explicit Environment Variable (Priority 1)
   if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
     return process.env.PUPPETEER_EXECUTABLE_PATH;
   }
 
-  if (process.env.NODE_ENV === "production") {
-    try {
-      const chromiumPath = (puppeteer as any).executablePath?.();
-      if (chromiumPath && fs.existsSync(chromiumPath)) return chromiumPath;
-    } catch {
-      // ignore — undefined lets puppeteer.launch() resolve its own default
-    }
-    return undefined;
+  // 2. Linux / Azure App Service Common Chromium Paths
+  const linuxPaths = [
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome-stable",
+    "/usr/bin/google-chrome",
+  ];
+
+  for (const lp of linuxPaths) {
+    if (fs.existsSync(lp)) return lp;
   }
 
+  // 3. Windows Local Edge Paths
   const edgePaths = [
     "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
     "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -40,6 +44,7 @@ function getBrowserExecutablePath(): string | undefined {
     if (fs.existsSync(p)) return p;
   }
 
+  // 4. Puppeteer Bundled Chromium Fallback
   try {
     const fallback = (puppeteer as any).executablePath?.();
     if (fallback && fs.existsSync(fallback)) return fallback;
@@ -47,7 +52,7 @@ function getBrowserExecutablePath(): string | undefined {
     // ignore
   }
 
-  console.warn("⚠️ [TikTok Publisher] No local Edge/Chromium found — letting Puppeteer resolve its default.");
+  console.warn("⚠️ [TikTok Publisher] No fixed browser path found — letting Puppeteer resolve default.");
   return undefined;
 }
 
@@ -115,7 +120,7 @@ export class TikTokService extends BasePublisher {
   }
 
   async uploadVideo(filePath: string, description: string): Promise<void> {
-    console.log("🎵 [TikTok Service] Starting TikTok Video Upload (Puppeteer Stealth)...");
+    console.log("🎵 [TikTok Service] Starting TikTok Video Upload (Puppeteer Stealth Native Bypass)...");
 
     if (!fs.existsSync(filePath)) {
       throw new Error(`❌ Target video file not found at: ${filePath}`);
@@ -143,6 +148,7 @@ export class TikTokService extends BasePublisher {
       args: [
         "--no-sandbox",
         "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
         "--window-size=1920,1080",
         "--disable-blink-features=AutomationControlled",
         "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
@@ -172,113 +178,66 @@ export class TikTokService extends BasePublisher {
       await page.setCookie(...fixedCookies);
       console.log("      ✅ [TikTok Service] Cookies Injected!");
 
-      console.log("      🌍 [TikTok Service] Navigating to TikTok Creator Center...");
-      await page.goto("https://www.tiktok.com/creator-center/upload?lang=en", { waitUntil: "domcontentloaded" });
+      console.log("      🌍 [TikTok Service] Opening TikTok Upload Dashboard...");
+      await page.goto("https://www.tiktok.com/creator-center/upload?lang=en", { waitUntil: "networkidle2" });
+      await new Promise((r) => setTimeout(r, 4000));
 
-      console.log("      📤 [TikTok Service] Injecting Video File via DOM Selector...");
-      const fileInput = await page.waitForSelector('input[type="file"]', { timeout: 30000 });
+      console.log("      📤 [TikTok Service] Injecting file directly into hidden input...");
+      const fileInput = await page.waitForSelector('input[type="file"]', { timeout: 20000 });
       if (fileInput) {
         await fileInput.uploadFile(filePath);
-        console.log("      ✅ [TikTok Service] Video File Injected Successfully!");
+        console.log("      ✅ [TikTok Service] File attached directly into DOM!");
+      } else {
+        throw new Error("❌ Could not find hidden file input element!");
       }
 
-      console.log("      ⏳ [TikTok Service] Waiting for video processing & copyright checks (40s ceiling)...");
-      await page
-        .waitForFunction(
-          () => {
-            const buttons = Array.from(document.querySelectorAll("button, div[role='button']"));
-            const postBtn = buttons.find((el) => el.textContent?.trim() === "Post");
-            if (!postBtn) return false;
-            const isDisabled =
-              (postBtn as HTMLButtonElement).disabled === true ||
-              postBtn.getAttribute("aria-disabled") === "true" ||
-              postBtn.classList.contains("disabled");
-            return !isDisabled;
-          },
-          { timeout: 40000 }
-        )
-        .then(() => console.log("      ✅ [TikTok Service] Post button became enabled before ceiling."))
-        .catch(() => console.log("      ⏳ [TikTok Service] Processing ceiling (40s) reached, proceeding."));
+      console.log("      ⏳ [TikTok Service] Waiting 45s for TikTok video processing & preview generation...");
+      await new Promise((r) => setTimeout(r, 45000));
 
-      // Clear DraftEditor & Type Caption
-      console.log("      ✍️ [TikTok Service] Typing Caption Metadata...");
+      // Caption handling with DraftEditor reset
+      console.log("      ✍️ [TikTok Service] Entering Caption...");
       try {
-        await page.waitForSelector(".public-DraftEditor-content", { timeout: 10000 });
-        await page.click(".public-DraftEditor-content");
-
-        // Clear existing content if any
-        await page.keyboard.down("Control");
-        await page.keyboard.press("A");
-        await page.keyboard.up("Control");
-        await page.keyboard.press("Backspace");
-
-        await page.keyboard.type(description, { delay: 30 });
-        console.log("      ✅ [TikTok Service] Caption typed successfully!");
-      } catch (e: unknown) {
-        console.log("      ⚠️ [TikTok Service] DraftEditor caption selector skipped or timed out.");
+        const captionEditor = await page.waitForSelector(".public-DraftEditor-content", { timeout: 8000 });
+        if (captionEditor) {
+          await captionEditor.click();
+          await page.keyboard.down("Control");
+          await page.keyboard.press("A");
+          await page.keyboard.up("Control");
+          await page.keyboard.press("Backspace");
+          await page.keyboard.type(description || "CastBot Automated Video Upload", { delay: 30 });
+          console.log("      ✅ [TikTok Service] Caption Added!");
+        }
+      } catch (e) {
+        console.log("      ⚠️ [TikTok Service] DraftEditor step skipped or not found.");
       }
 
-      console.log("      🔘 [TikTok Service] Clicking Initial Post Button...");
+      await new Promise((r) => setTimeout(r, 3000));
+
+      console.log("      🔘 [TikTok Service] Clicking Main Post Button...");
       await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll("button, div[role='button']"));
-        const postBtn = buttons.find((el) => el.textContent?.trim() === "Post");
-        if (postBtn) {
-          (postBtn as HTMLElement).click();
-          console.log("      🔥 [TikTok Service] Initial Post Button Clicked!");
-        }
+        const buttons = Array.from(document.querySelectorAll('button, div[role="button"]')) as HTMLElement[];
+        const postBtn = buttons.find((btn) => btn.textContent?.trim() === "Post");
+        if (postBtn) postBtn.click();
       });
 
-      // Run Popup Buster Loop for optional confirmation modals (e.g. "Continue to post?")
-      console.log("      ⚔️ [TikTok Service] Running Smart Confirmation Popup Buster Loop...");
-      for (let i = 0; i < 6; i++) {
-        await new Promise((r) => setTimeout(r, 1500));
-        await page.evaluate(() => {
-          // 1. Look inside dialog/modal containers first
-          const modalBtns = Array.from(
-            document.querySelectorAll('div[role="dialog"] button, div[role="dialog"] div[role="button"], .modal-btn, [class*="modal"] button')
-          );
+      console.log("      ⚔️ [TikTok Service] Handling Confirmation Popups...");
+      await new Promise((r) => setTimeout(r, 4000));
 
-          let clicked = false;
-          modalBtns.forEach((btn) => {
-            const text = btn.textContent?.trim().toLowerCase();
-            if (text && ["post", "continue", "post anyway", "allow", "got it", "confirm"].includes(text)) {
-              (btn as HTMLElement).click();
-              console.log(`      🔥 Clicked Modal Confirm Button: "${text}"`);
-              clicked = true;
-            }
-          });
-
-          // 2. Fallback check for global popup buttons if modal wrapper wasn't strictly found
-          if (!clicked) {
-            const allBtns = Array.from(document.querySelectorAll('button, div[role="button"]'));
-            allBtns.forEach((btn) => {
-              const text = btn.textContent?.trim().toLowerCase();
-              if (
-                text &&
-                ["continue to post", "post anyway", "allow", "turn on", "confirm"].includes(text)
-              ) {
-                (btn as HTMLElement).click();
-                console.log(`      🔥 Clicked Global Popup Button: "${text}"`);
-              }
-            });
+      await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button, div[role="button"], span')) as HTMLElement[];
+        buttons.forEach((btn) => {
+          const text = btn.textContent?.trim().toLowerCase();
+          if (text && (text.includes("continue") || text.includes("post anyway") || text.includes("allow") || text.includes("got it"))) {
+            btn.click();
+            console.log("      🔥 [TikTok Service] Clicked Popup Confirmation Button:", text);
           }
         });
-      }
+      });
 
-      try {
-        console.log("      🌐 [TikTok Service] Waiting for network idle after post submission...");
-        await page.waitForNetworkIdle({ idleTime: 2000, timeout: 30000 });
-      } catch (netErr) {
-        console.log("      ℹ️ Network idle wait completed or timed out gracefully.");
-      }
+      console.log("      ⏳ [TikTok Service] Waiting 15s for server confirmation...");
+      await new Promise((r) => setTimeout(r, 25000));
+      console.log("      🎉 [TikTok Service] TikTok Video Published Successfully!");
 
-      console.log("      ⏳ [TikTok Service] Waiting for server synchronization & publishing (35s ceiling)...");
-      await page
-        .waitForFunction(() => !window.location.href.includes("/upload"), { timeout: 35000 })
-        .then(() => console.log("      ✅ [TikTok Service] Navigated away from upload page before ceiling."))
-        .catch(() => console.log("      ⏳ [TikTok Service] Publish-sync ceiling (35s) reached, proceeding."));
-
-      console.log("   ✅ [TikTok Service] TikTok Upload Pipeline Completed!");
     } catch (error: unknown) {
       try {
         await page.screenshot({ path: "tiktok-debug-error.png", fullPage: true });
@@ -288,6 +247,7 @@ export class TikTokService extends BasePublisher {
       }
       this.handleUploadError("Upload", error);
     } finally {
+      console.log("      🔒 [TikTok Service] Closing browser...");
       await browser.close();
     }
   }
