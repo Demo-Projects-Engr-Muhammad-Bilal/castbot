@@ -142,24 +142,31 @@ export class TikTokService extends BasePublisher {
       (executablePath ? ` with binary: ${executablePath}` : " with Puppeteer's bundled Chromium")
     );
 
-    const browser = await puppeteer.launch({
-      headless: isHeadless,
-      ...(executablePath ? { executablePath } : {}),
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--no-first-run",
-        "--no-zygote",
-        "--single-process", // Critical for Azure App Service Linux Container sandbox
-        "--disable-gpu",
-        "--window-size=1920,1080",
-        "--disable-blink-features=AutomationControlled",
-        "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-      ],
-      defaultViewport: { width: 1920, height: 1080 },
-    });
+    let browser;
+    try {
+      console.log("      🌐 [TikTok Service] Launching Stealth Browser...");
+      browser = await puppeteer.launch({
+        headless: isHeadless,
+        ...(executablePath ? { executablePath } : {}),
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process", // Required for Azure Linux App Service sandbox
+          "--disable-gpu",
+          "--window-size=1920,1080",
+          "--disable-blink-features=AutomationControlled",
+          "--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        ],
+        defaultViewport: { width: 1920, height: 1080 },
+      });
+    } catch (launchErr: any) {
+      console.error("❌ [TikTok Service] Browser launch failed on host environment:", launchErr?.message || launchErr);
+      throw new Error(`TikTok Puppeteer execution bypassed: Host missing headless GUI libraries (${launchErr?.message || 'Linux Sandbox restriction'})`);
+    }
 
     const page = await browser.newPage();
     page.setDefaultNavigationTimeout(0);
